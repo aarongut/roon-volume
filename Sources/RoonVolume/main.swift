@@ -178,7 +178,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       }
       return "\(output.displayName): \(value)"
     }.joined(separator: "\n")
-    if !text.isEmpty { overlay.show(text, restartTimer: restartTimer) }
+    if !text.isEmpty {
+      let symbolName =
+        outputs.allSatisfy { $0.volume?.isMuted == true } ? "speaker.slash" : "speaker.wave.2"
+      overlay.show(text, symbolName: symbolName, restartTimer: restartTimer)
+    }
   }
 
   private func perform(_ action: MenuAction) {
