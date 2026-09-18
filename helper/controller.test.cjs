@@ -1,6 +1,25 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { Controller } = require('./controller.cjs');
+test('seek-only, unknown, and unchanged updates emit no snapshots', () => {
+  const { c, messages } = fixture();
+  const before = messages.length;
+  c.update('Changed', { zones_seek_changed: [{ zone_id: 'g', seek_position: 10 }] });
+  c.update('Changed', { zones_removed: ['missing'] });
+  c.update('Changed', { zones_changed: [{ ...c.zones.get('g'), now_playing: { image_key: 'new-art' } }] });
+  c.update('Unknown');
+  c.update('Subscribed', { zones: [...c.zones.values()] });
+  assert.equal(messages.length, before);
+  c.update('Changed', { zones_changed: [{ ...c.zones.get('g'), state: 'paused' }] });
+  assert.equal(messages.length, before + 1);
+  c.update('Changed', { zones_removed: ['g'] });
+  assert.equal(messages.length, before + 2);
+});
+test('snapshots project only the fields consumed by Swift', () => {
+  const { c, messages } = fixture();
+  c.update('Changed', { zones_added: [{ zone_id: 'new', display_name: 'New', state: 'playing', now_playing: { image_key: 'art' }, outputs: [{ output_id: 'x', display_name: 'X', source_controls: {}, volume: { type: 'db', value: -30, min: -80, max: 0, step: 1, is_muted: false } }] }] });
+  assert.deepEqual(messages.at(-1).zones.at(-1), { zone_id: 'new', display_name: 'New', state: 'playing', outputs: [{ output_id: 'x', display_name: 'X', volume: { type: 'db', value: -30, is_muted: false, is_fixed: undefined } }] });
+});
 function fixture() {
   const messages = [], calls = [];
   const c = new Controller(m => messages.push(m));

@@ -12,6 +12,7 @@ if [[ ! -d helper/node_modules ]]; then
 fi
 swift build --build-system native -c release --arch arm64
 app="dist/Roon Volume.app"
+rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources/helper"
 cp .build/arm64-apple-macosx/release/RoonVolume "$app/Contents/MacOS/RoonVolume"
 cp Resources/Info.plist "$app/Contents/Info.plist"

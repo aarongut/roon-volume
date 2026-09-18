@@ -1,6 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+swift format lint --strict --recursive Sources Tests Package.swift
 # Standalone Command Line Tools need explicit framework and macro search paths.
 developer="$(xcode-select -p)"
 if [[ -d "$developer/Library/Developer/Frameworks/Testing.framework" ]]; then

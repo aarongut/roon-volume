@@ -4,13 +4,24 @@ class Controller {
   connect(transport, core) { this.generation++; this.transport = transport; this.core = core; this.zones.clear(); this.busy = false; this.snapshot(); }
   disconnect() { this.generation++; this.transport = null; this.zones.clear(); this.busy = false; this.snapshot(); }
   update(response, body = {}) {
-    if (response === 'Subscribed') this.zones = new Map((body.zones || []).map(z => [z.zone_id, z]));
+    let changed = false;
+    if (response === 'Subscribed') {
+      const zones = new Map((body.zones || []).map(z => [z.zone_id, projectZone(z)]));
+      changed = JSON.stringify([...zones.values()]) !== JSON.stringify([...this.zones.values()]);
+      this.zones = zones;
+    }
     if (response === 'Changed') {
-      for (const id of body.zones_removed || []) this.zones.delete(id);
-      for (const z of [...body.zones_added || [], ...body.zones_changed || []]) this.zones.set(z.zone_id, z);
+      for (const id of body.zones_removed || []) changed = this.zones.delete(id) || changed;
+      for (const z of [...body.zones_added || [], ...body.zones_changed || []]) {
+        const zone = projectZone(z);
+        if (JSON.stringify(zone) !== JSON.stringify(this.zones.get(z.zone_id))) {
+          this.zones.set(z.zone_id, zone);
+          changed = true;
+        }
+      }
     }
     if (response === 'Unsubscribed') { this.disconnect(); return; }
-    this.snapshot();
+    if (changed) this.snapshot();
   }
   snapshot() { this.send({ type: 'snapshot', connected: !!this.transport, core: this.core, generation: this.generation, zones: [...this.zones.values()] }); }
   async command(cmd) {
@@ -39,5 +50,17 @@ class Controller {
       if (generation === this.generation) result(errors.filter(Boolean).join('; '), ids);
     } finally { if (generation === this.generation) this.busy = false; }
   }
+}
+function projectZone(zone) {
+  return {
+    zone_id: zone.zone_id, display_name: zone.display_name, state: zone.state,
+    outputs: (zone.outputs || []).map(output => ({
+      output_id: output.output_id, display_name: output.display_name,
+      ...(output.volume ? { volume: {
+        type: output.volume.type, value: output.volume.value,
+        is_muted: output.volume.is_muted, is_fixed: output.volume.is_fixed
+      } } : {})
+    }))
+  };
 }
 module.exports = { Controller };
