@@ -41,6 +41,12 @@ public struct Snapshot: Codable {
   public var core: String?
   public var generation: Int
   public var zones: [Zone]
+  public var tideStatus: String?
+
+  private enum CodingKeys: String, CodingKey {
+    case connected, core, generation, zones
+    case tideStatus = "tide_status"
+  }
   public init(connected: Bool = false, core: String? = nil, generation: Int = 0, zones: [Zone] = [])
   {
     self.connected = connected

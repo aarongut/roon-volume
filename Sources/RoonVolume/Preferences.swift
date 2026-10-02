@@ -3,6 +3,7 @@ import Foundation
 final class Preferences {
   private enum Key: String {
     case outputs, preferred, useMac, welcomed, migratedFromAaronIdentifier
+    case tideHost, tideOutput
   }
   private let defaults: UserDefaults
 
@@ -32,5 +33,13 @@ final class Preferences {
   var welcomed: Bool {
     get { defaults.bool(forKey: Key.welcomed.rawValue) }
     set { defaults.set(newValue, forKey: Key.welcomed.rawValue) }
+  }
+  var tideHost: String {
+    get { defaults.string(forKey: Key.tideHost.rawValue) ?? "10.0.0.130" }
+    set { defaults.set(newValue, forKey: Key.tideHost.rawValue) }
+  }
+  var tideOutput: String? {
+    get { defaults.string(forKey: Key.tideOutput.rawValue) }
+    set { defaults.set(newValue, forKey: Key.tideOutput.rawValue) }
   }
 }

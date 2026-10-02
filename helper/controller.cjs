@@ -1,6 +1,12 @@
 'use strict';
+const { Tide16 } = require('./tide16.cjs');
 class Controller {
-  constructor(send) { this.send = send; this.generation = 0; this.zones = new Map(); this.transport = null; this.eligible = new Set(); this.busy = false; }
+  constructor(send, tide) { this.send = send; this.generation = 0; this.zones = new Map(); this.transport = null; this.eligible = new Set(); this.busy = false; this.tide = tide || new Tide16(() => this.tideChanged()); this.tideOutput = null; this.tideAvailable = false; }
+  tideChanged() {
+    const available = !this.tide.volume.is_fixed;
+    if (available !== this.tideAvailable) { this.tideAvailable = available; this.generation++; }
+    this.snapshot();
+  }
   connect(transport, core) { this.generation++; this.transport = transport; this.core = core; this.zones.clear(); this.busy = false; this.snapshot(); }
   disconnect() { this.generation++; this.transport = null; this.zones.clear(); this.busy = false; this.snapshot(); }
   update(response, body = {}) {
@@ -23,23 +29,36 @@ class Controller {
     if (response === 'Unsubscribed') { this.disconnect(); return; }
     if (changed) this.snapshot();
   }
-  snapshot() { this.send({ type: 'snapshot', connected: !!this.transport, core: this.core, generation: this.generation, zones: [...this.zones.values()] }); }
+  projectedZones() {
+    return [...this.zones.values()].map(z => ({ ...z, outputs: z.outputs.map(o => o.output_id === this.tideOutput ? { ...o, volume: this.tide.volume } : o) }));
+  }
+  snapshot() { this.send({ type: 'snapshot', connected: !!this.transport, core: this.core, generation: this.generation, tide_status: this.tideOutput ? this.tide.status : null, zones: this.projectedZones() }); }
   async command(cmd) {
     const result = (error, outputs = []) => this.send({ type: 'result', id: cmd.id, generation: cmd.generation, error: error || null, outputs });
-    if (cmd.type === 'configure') { this.eligible = new Set((cmd.output_ids || []).filter(x => typeof x === 'string')); return; }
+    if (cmd.type === 'configure') {
+      this.eligible = new Set((cmd.output_ids || []).filter(x => typeof x === 'string'));
+      const output = typeof cmd.tide_output_id === 'string' ? cmd.tide_output_id : null;
+      const host = typeof cmd.tide_host === 'string' && /^[a-zA-Z0-9.-]+$/.test(cmd.tide_host) ? cmd.tide_host : null;
+      if (output !== this.tideOutput || host !== this.tide.host) {
+        this.generation++; this.tideOutput = output; this.tide.configure(host); this.snapshot();
+      }
+      return;
+    }
     if (!['up', 'down', 'mute'].includes(cmd.action)) return result('Unknown action');
     if (!this.transport || cmd.generation !== this.generation) return result('Roon disconnected');
     if (this.busy) return result('busy'); // Drop repeats rather than building a delayed queue.
     const ids = [...new Set(cmd.output_ids || [])];
-    const zone = [...this.zones.values()].find(z => z.state === 'playing' && ids.every(id => z.outputs.some(o => o.output_id === id)));
+    const zone = this.projectedZones().find(z => z.state === 'playing' && ids.every(id => z.outputs.some(o => o.output_id === id)));
     const outputs = ids.map(id => zone?.outputs.find(o => o.output_id === id));
     if (!ids.length || outputs.some(o => !o || !this.eligible.has(o.output_id) || !o.volume || o.volume.is_fixed)) return result('Target is no longer playing or has no volume control');
     if (cmd.action === 'mute' && outputs.some(o => typeof o.volume.is_muted !== 'boolean')) return result('This output does not support mute');
     const transport = this.transport, generation = this.generation;
     const mute = outputs.every(o => o.volume.is_muted) ? 'unmute' : 'mute';
-    this.busy = true;
+    const operation = {}; this.busy = operation;
     try {
-      const errors = await Promise.all(outputs.map(o => new Promise(resolve => {
+      const errors = await Promise.all(outputs.map(o => o.output_id === this.tideOutput
+        ? this.tide.control(cmd.action, mute, () => generation === this.generation && this.eligible.has(o.output_id) && [...this.zones.values()].some(z => z.state === 'playing' && z.outputs.some(x => x.output_id === o.output_id))).then(() => null, err => `${o.display_name}: ${err.message}`)
+        : new Promise(resolve => {
         let timer = setTimeout(() => resolve(`${o.display_name}: timed out`), 2000);
         const cb = err => { clearTimeout(timer); resolve(err ? `${o.display_name}: ${err}` : null); };
         try {
@@ -48,7 +67,7 @@ class Controller {
         } catch (err) { cb(err.message); }
       })));
       if (generation === this.generation) result(errors.filter(Boolean).join('; '), ids);
-    } finally { if (generation === this.generation) this.busy = false; }
+    } finally { if (this.busy === operation) this.busy = false; }
   }
 }
 function projectZone(zone) {

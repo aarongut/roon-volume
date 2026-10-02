@@ -29,6 +29,16 @@ Mute toggles the selected outputs together: if any is unmuted, mute all; otherwi
 
 The helper drops repeats while a command is pending. Pipe writes run on a background queue with a bounded backlog and a 100 ms write deadline; a stalled pipe causes the helper to terminate and reconnect rather than block the event tap. It rejects stale targets and does not replay requests after reconnection. A press held across a disconnect remains consumed until release; the next press returns to normal routing. Other media keys are unaffected. Restart delays grow from 3 seconds to a maximum of 60 seconds, resetting after 30 seconds of stable runtime.
 
+## Theater / miniDSP Tide16
+
+On first discovery, **Theater Audio** is automatically selected and mapped to the Tide16 at **10.0.0.130**. The app resolves that name once and saves the stable Roon output ID. **Configure Tide16…** in the speaker menu lets you change the IP address or hostname, choose a different Roon output, or remove the mapping. A DHCP reservation keeps the IP stable; a Pi-hole DNS record is also supported.
+
+While the mapped output plays, volume keys change the Tide16 master volume by **0.5 dB**, and mute controls the Tide16. Chromecast volume is left at its existing setting. The overlay uses actual Tide16 feedback, including changes from its remote or front panel. The mapping works with fixed-volume Roon outputs and follows the same grouping and room preference rules as the other outputs. Use **When multiple rooms play** to choose between independently playing rooms.
+
+The helper connects directly to the [official Tide16 WebSocket API](https://docs.minidsp.com/product-manuals/tide16/websocket-api/index.html) on port 5555; Home Assistant is not required. It reads current state before each change, drops repeats while waiting, and never replays commands after reconnecting. When disconnected or in Dirac measurement mode, the mapped output is unavailable for key routing; the app never falls back to changing Chromecast volume. The menu shows the Tide16 connection status. If macOS prompts, allow **Roon Volume** local-network access in System Settings → Privacy & Security → Local Network. Actual device response still requires an interactive check after launching the app.
+
+Tests also cover Tide16 step sizes and bounds, live feedback, calibration, timeout handling, grouped control, and configuration changes during pending commands.
+
 ## Validation
 
 ```sh

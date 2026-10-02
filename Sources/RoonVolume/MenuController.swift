@@ -16,7 +16,7 @@ enum MenuAction {
   case restoreAccess, toggleMac
   case selectTarget(String?)
   case toggleOutput(String)
-  case setup, toggleLogin, quit
+  case setup, configureTide, toggleLogin, quit
 }
 
 private final class ActionBox: NSObject {
@@ -46,11 +46,12 @@ final class MenuController: NSObject, NSMenuDelegate {
     if !state.captureReady {
       add("Keyboard access unavailable · restore access…", to: menu, action: .restoreAccess)
     }
+    if let status = state.snapshot.tideStatus { add("Tide16 · \(status)", to: menu) }
     switch state.route {
     case .mac:
       add("Keys control Mac volume", to: menu)
     case .choose:
-      add("Both rooms playing · choose a target below", to: menu)
+      add("Multiple rooms playing · choose a target below", to: menu)
     case .outputs(let ids):
       let names = state.snapshot.zones.flatMap(\.outputs).filter { ids.contains($0.outputID) }.map(
         \.displayName)
@@ -64,14 +65,14 @@ final class MenuController: NSObject, NSMenuDelegate {
     ).values.sorted { $0.displayName < $1.displayName }
     let targets = NSMenu()
     add(
-      "Ask when both rooms play", to: targets, action: .selectTarget(nil),
+      "Ask when multiple rooms play", to: targets, action: .selectTarget(nil),
       checked: state.preferred == nil)
     for output in all where state.eligible.contains(output.outputID) {
       add(
         output.displayName, to: targets, action: .selectTarget(output.outputID),
         checked: state.preferred == output.outputID)
     }
-    submenu("When both rooms play", child: targets, parent: menu)
+    submenu("When multiple rooms play", child: targets, parent: menu)
     let outputs = NSMenu()
     for output in all {
       let suffix = output.volume?.controllable == true ? "" : " (no volume control)"
@@ -83,8 +84,9 @@ final class MenuController: NSObject, NSMenuDelegate {
       add("Unavailable output · \(id)", to: outputs, action: .toggleOutput(id), checked: true)
     }
     if outputs.items.isEmpty { add("Outputs appear after connecting to Roon", to: outputs) }
-    submenu("Controlled outputs (select your 8C and WiiM)", child: outputs, parent: menu)
+    submenu("Controlled outputs", child: outputs, parent: menu)
     menu.addItem(.separator())
+    add("Configure Tide16…", to: menu, action: .configureTide)
     add("Setup instructions…", to: menu, action: .setup)
     add(
       "Launch at login", to: menu, action: .toggleLogin,
