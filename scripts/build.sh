@@ -76,7 +76,7 @@ for index in "${!sources[@]}"; do
     install_name_tool -id "@loader_path/$(basename "$bundled_file")" "$bundled_file"
   fi
 done
-cp helper/index.cjs helper/controller.cjs helper/package.json helper/package-lock.json "$app/Contents/Resources/helper/"
+cp helper/index.cjs helper/controller.cjs helper/tide16.cjs helper/package.json helper/package-lock.json "$app/Contents/Resources/helper/"
 cp Resources/Node-LICENSE "$app/Contents/Resources/Node-LICENSE"
 ditto helper/node_modules "$app/Contents/Resources/helper/node_modules"
 identity="${ROON_SIGNING_IDENTITY:--}"

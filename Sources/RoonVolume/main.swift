@@ -102,7 +102,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   private func configure() {
-    helper.send(["type": "configure", "output_ids": Array(preferences.outputs)])
+    var config: [String: Any] = ["type": "configure", "output_ids": Array(preferences.outputs)]
+    if !preferences.tideHost.isEmpty, let id = preferences.tideOutput {
+      config["tide_host"] = preferences.tideHost
+      config["tide_output_id"] = id
+    }
+    helper.send(config)
   }
 
   private func message(_ data: Data) {
@@ -112,6 +117,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     if type == "snapshot", let fresh = try? JSONDecoder().decode(Snapshot.self, from: data) {
       if fresh.generation != snapshot.generation { clearOverlayTracking() }
       snapshot = fresh
+      // Resolve the supplied name once, then retain Roon's stable output ID.
+      if preferences.tideOutput == nil, !preferences.tideHost.isEmpty {
+        let matches = Dictionary(
+          fresh.zones.flatMap(\.outputs).filter { $0.displayName == "Theater Audio" }.map {
+            ($0.outputID, $0)
+          }, uniquingKeysWith: { a, _ in a })
+        if matches.count == 1, let id = matches.keys.first {
+          preferences.tideOutput = id
+          preferences.outputs.insert(id)
+          configure()
+        }
+      }
       helperError = nil
       writeStatus()
       // Feedback may update the visible text, but it never extends a key press's lifetime.
@@ -201,6 +218,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       configure()
     case .setup:
       setup()
+    case .configureTide:
+      configureTide()
     case .toggleLogin:
       do {
         if SMAppService.mainApp.status == .enabled {
@@ -212,6 +231,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     case .quit:
       NSApp.terminate(nil)
     }
+  }
+
+  private func configureTide() {
+    NSApp.activate(ignoringOtherApps: true)
+    let alert = NSAlert()
+    alert.messageText = "Configure Tide16"
+    alert.informativeText =
+      "Enter the Tide16 IP address or hostname and select its Roon output. Volume keys change the Tide16 by 0.5 dB while that output plays."
+    let view = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 70))
+    let host = NSTextField(frame: NSRect(x: 0, y: 40, width: 320, height: 24))
+    host.stringValue = preferences.tideHost
+    host.placeholderString = "10.0.0.130 or tide16.home"
+    let output = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 320, height: 28))
+    let all = Dictionary(
+      snapshot.zones.flatMap(\.outputs).map { ($0.outputID, $0) },
+      uniquingKeysWith: { a, _ in a }
+    ).values.sorted { $0.displayName < $1.displayName }
+    for entry in all {
+      output.addItem(withTitle: entry.displayName)
+      output.lastItem?.representedObject = entry.outputID
+      if entry.outputID == preferences.tideOutput { output.select(output.lastItem) }
+    }
+    view.addSubview(host)
+    view.addSubview(output)
+    alert.accessoryView = view
+    alert.addButton(withTitle: "Save")
+    alert.addButton(withTitle: "Cancel")
+    alert.addButton(withTitle: "Remove mapping")
+    switch alert.runModal() {
+    case .alertFirstButtonReturn:
+      let address = host.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard address.range(of: "^[a-zA-Z0-9.-]+$", options: .regularExpression) != nil,
+        let id = output.selectedItem?.representedObject as? String
+      else {
+        overlay.show("Enter an IP or hostname and select a Roon output")
+        return
+      }
+      preferences.tideHost = address
+      preferences.tideOutput = id
+      preferences.outputs.insert(id)
+    case .alertThirdButtonReturn:
+      preferences.tideHost = ""
+      preferences.tideOutput = nil
+    default:
+      return
+    }
+    pressRouter.invalidate()
+    clearOverlayTracking()
+    configure()
   }
 
   private func setup() {
